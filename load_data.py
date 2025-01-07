@@ -14,6 +14,7 @@ class LoadCOCO():
         self.val_path=path+'/captions_val2017.json'
         self.cap_train=json.load(open(self.train_path))
         self.cap_val=json.load(open(self.val_path))
+        self.transform=IMDB_transform()
 
     def get_imgID_captions_train(self,store_path='/data/data_fxu/MS-COCO'):
         imgID_cap_train={}
@@ -44,10 +45,10 @@ class LoadCOCO():
     def get_dataset(self,cap_idx=0):
         train_set=self.read_imgID_captions_train()
         val_set=self.read_imgID_captions_val()
-        train_img_ids=list(train_set.keys())
+        train_img_ids=list(map(lambda x: os.path.join('/data/data_fxu/MS-COCO/train/data','0'*(12-len(x))+x+'.jpg') ,train_set.keys()))
         train_caps=[]
 
-        val_img_ids=list(val_set.keys())
+        val_img_ids=list(map(lambda x: os.path.join('/data/data_fxu/MS-COCO/validation/data','0'*(12-len(x))+x+'.jpg') ,val_set.keys()))
         val_caps=[]
 
         for i in range(len(train_img_ids)):
@@ -55,7 +56,7 @@ class LoadCOCO():
         for j in range(len(val_img_ids)):
             val_caps.append(val_set[val_img_ids[j]][cap_idx])
         
-        return CustomDataset(train_img_ids,train_caps),CustomDataset(val_img_ids,val_caps)
+        return CustomDataset(train_img_ids,train_caps,self.transform),CustomDataset(val_img_ids,val_caps,self.transform)
 
     def read_imgID_captions_train(self,path='/data/data_fxu/MS-COCO/imgIDs_and_captions_train.json'):
         if os.path.exists(path)==False:
