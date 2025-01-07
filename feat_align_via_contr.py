@@ -19,6 +19,7 @@ class Main():
     def __init__(self,seed,embed_dim,temp,batch_size,n_epochs,dataset,ckpt_path,vision_encoder,text_encoder,optimizer):
         # Parameters
         self.accelerate=Accelerator()
+        self.accelerate.debug=True
         self.embed_dim = embed_dim
         self.temperature = temp
         self.batch_size=batch_size
@@ -56,6 +57,9 @@ class Main():
         dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=True)
         
         start_epoch,_=self.load_ckpt(self.ckpt_path,{'vision_proj':self.vision_encoder.module.fc,'text_proj':self.text_encoder.module.fc},self.optimizer)
+        
+        self.vision_encoder.train()
+        self.text_encoder.train()
 
         for epoch in range(start_epoch,self.n_epochs):
             total_loss=.0
@@ -81,6 +85,18 @@ class Main():
             print('*'*20)                
             self.save_ckpt(epoch+1,{'vision_proj':self.vision_encoder.module.fc.state_dict(),'text_proj':self.text_encoder.module.fc.state_dict()},self.optimizer,total_loss,self.ckpt_path)
     
+    def get_metrics(self,cosine):
+        n_class=cosine.size(1)
+        labels=torch.arange(n_class).to(self.device)
+
+        compute_precision=MulticlassPrecision(num_classes=n_class).to(self.device)
+        compute_recall=MulticlassRecall(num_classes=n_class).to(self.device)
+
+        precision=compute_precision(cosine,labels)
+        recall=compute_recall(cosine,labels)
+        
+        return precision,recall
+
     def test(self,ckpt_path,dataset):
         ckpt=torch.load(ckpt_path,weights_only=True)
         self.vision_encoder.module.fc.load_state_dict(ckpt['model_state_dict']['vision_proj'])
@@ -91,8 +107,11 @@ class Main():
 
         dataloader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
 
-        precision=.0
-        recall=.0
+        img2txt_precision=.0
+        img2txt_recall=.0
+        
+        txt2img_precision=.0
+        txt2img_recall=.0
 
         for i,batch in enumerate(tqdm(dataloader)):
             images,texts=batch['image'].to(self.device),batch['text']
@@ -102,18 +121,21 @@ class Main():
             text_embeddings = self.text_encoder(encoded_captions['input_ids'],encoded_captions['attention_mask'])
             
             cosine=pairwise_cosine_similarity(image_embeddings,text_embeddings)
-            
-            #img2txt
-            n_class=cosine.size(1)
-            labels=torch.arange(n_class).to(self.device)
-            
-            compute_precision=MulticlassPrecision(num_classes=n_class).to(self.device)
-            compute_recall=MulticlassRecall(num_classes=n_class).to(self.device)
-            
-            precision+=compute_precision(cosine,labels)
-            recall+=compute_recall(cosine,labels)
-        print(f'Precsion:{precision/(i+1)*100:.2f}%')
-        print(f'Recall:{recall/(i+1)*100:.2f}%')
+            img2txt_pre,img2txt_re=self.get_metrics(cosine)
+            img2txt_precision+=img2txt_pre
+            img2txt_recall+=img2txt_re
+
+            txt2img_pre,txt2img_re=self.get_metrics(cosine.T)
+            txt2img_precision+=txt2img_pre
+            txt2img_recall+=txt2img_re
+        
+        print('Image-to-text')
+        print(f'Precsion:{img2txt_precision/(i+1)*100:.2f}%')
+        print(f'Recall:{img2txt_recall/(i+1)*100:.2f}%')
+
+        print('Text-to-image')
+        print(f'Precsion:{txt2img_precision/(i+1)*100:.2f}%')
+        print(f'Recall:{txt2img_recall/(i+1)*100:.2f}%')
 
 if __name__=='__main__':
     seed=0
@@ -121,7 +143,7 @@ if __name__=='__main__':
     temp=.07
     lr=1e-4
     batch_size=64
-    n_epochs=2
+    n_epochs=100
     train_dataset,val_dataset=LoadCOCO().get_dataset()
     ckpt_dir='/data/data_fxu/ckpt_resnet34_bert/'
     os.makedirs(ckpt_dir,exist_ok=True)
@@ -135,4 +157,4 @@ if __name__=='__main__':
 
     main=Main(seed,dim,temp,batch_size,n_epochs,train_dataset,ckpt_path,vision_encoder,text_encoder,optimizer)
     main.train()
-    #main.test(ckpt_path,dataset)
+    main.test(ckpt_path,val_dataset)
