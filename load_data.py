@@ -41,36 +41,39 @@ class LoadCOCO():
                 imgID_cap_val[img_id]=[cap]
         torch.save(imgID_cap_val,store_path+f'/imgIDs_and_captions_val.json')
         return imgID_cap_val
-    
+
+    def convert_id_to_path(self,ids):
+        return list(map(lambda x: os.path.join('/data/data_fxu/MS-COCO/validation/data','0'*(12-len(x))+x+'.jpg'),ids))
+
     def get_dataset(self,cap_idx=0):
         train_set=self.read_imgID_captions_train()
         val_set=self.read_imgID_captions_val()
-        train_img_ids=list(map(lambda x: os.path.join('/data/data_fxu/MS-COCO/train/data','0'*(12-len(x))+x+'.jpg') ,train_set.keys()))
+        train_img_ids=list(train_set.keys())
         train_caps=[]
 
-        val_img_ids=list(map(lambda x: os.path.join('/data/data_fxu/MS-COCO/validation/data','0'*(12-len(x))+x+'.jpg') ,val_set.keys()))
+        val_img_ids=list(val_set.keys())
         val_caps=[]
-
+        
         for i in range(len(train_img_ids)):
             train_caps.append(train_set[train_img_ids[i]][cap_idx])
         for j in range(len(val_img_ids)):
             val_caps.append(val_set[val_img_ids[j]][cap_idx])
         
-        return CustomDataset(train_img_ids,train_caps,self.transform),CustomDataset(val_img_ids,val_caps,self.transform)
+        return CustomDataset(self.convert_id_to_path(train_img_ids),train_caps,self.transform),CustomDataset(self.convert_id_to_path(val_img_ids),val_caps,self.transform)
 
     def read_imgID_captions_train(self,path='/data/data_fxu/MS-COCO/imgIDs_and_captions_train.json'):
         if os.path.exists(path)==False:
             imgID_cap_train=self.get_imgID_captions_train()
             return imgID_cap_train
         else:
-            return torch.load(path)
+            return torch.load(path,weights_only=True)
     
     def read_imgID_captions_val(self,path='/data/data_fxu/MS-COCO/imgIDs_and_captions_val.json'):
         if os.path.exists(path)==False:
             imgID_cap_val=self.get_imgID_captions_val()
             return imgID_cap_val
         else:
-            return torch.load(path)
+            return torch.load(path,weights_only=True)
 
 
 class LoadFlickr30K():
@@ -196,20 +199,19 @@ def IMDB_transform():
 
 if __name__=='__main__':
     batch_size=1024
-    '''
+    
     load_coco=LoadCOCO()
     coco_train_set,coco_val_set=load_coco.get_dataset()
-
+    '''
     load_flickr30k=LoadFlickr30K()
     flickr_set=load_flickr30k.get_dataset()
     
     load_celebA=LoadCelebA()
     celebA_set=load_celebA.get_dataset()
-    '''
+    
     load_imdb=LoadIMDB()
     imdb_set=load_imdb.get_dataset()
 
-    '''
     load_webdata=LoadWebDataset()
     sbu_dataloader=load_webdata.get_dataloaders(webdataset_path='/CC3M/cc3m')
     print(len(sbu_dataloader))
