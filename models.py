@@ -30,4 +30,6 @@ class BertEncoder(nn.Module):
         outputs = self.encoder(input_ids=input_ids, attention_mask=attention_mask)
         cls_embeddings = outputs.last_hidden_state[:, 0, :]
         return self.fc(cls_embeddings)
-
+    
+    def get_tokenizer(self):
+        return BertTokenizer.from_pretrained("bert-base-uncased")
