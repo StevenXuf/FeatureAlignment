@@ -121,8 +121,8 @@ if __name__=='__main__':
     temp=.07
     lr=1e-4
     batch_size=32
-    n_epochs=100
-    dataset=LoadIMDB().get_dataset()
+    n_epochs=2
+    train_set,val_set=LoadCOCO().get_dataset()
     ckpt_dir='/data/data_fxu/ckpt_resnet34_bert/'
     os.makedirs(ckpt_dir,exist_ok=True)
     ckpt_path=ckpt_dir+'ckpt.pth'
@@ -133,6 +133,6 @@ if __name__=='__main__':
     optimizer = optim.AdamW(
             list(vision_encoder.parameters()) + list(text_encoder.parameters()), lr=lr)
 
-    main=Main(seed,dim,temp,batch_size,n_epochs,dataset,ckpt_path,vision_encoder,text_encoder,optimizer)
-    #main.train()
-    main.test(ckpt_path,dataset)
+    main=Main(seed,dim,temp,batch_size,n_epochs,train_set,ckpt_path,vision_encoder,text_encoder,optimizer)
+    main.train()
+    #main.test(ckpt_path,val_set)

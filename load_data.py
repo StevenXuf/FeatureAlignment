@@ -80,6 +80,7 @@ class LoadFlickr30K():
     def __init__(self,path='/data/data_fxu/Flickr30k'):
         self.path=path
         self.df=pd.read_csv(self.path+'/results.csv')
+        self.transform=IMDB_transform()
 
     def get_names_caps(self,cap_idx=0):
         img_names_caps={}
@@ -91,7 +92,7 @@ class LoadFlickr30K():
 
     def get_dataset(self,idx=0):
         img_names_caps=self.get_names_caps(cap_idx=idx)
-        return CustomDataset(img_names_caps['img_names'],img_names_caps['img_caps'])
+        return CustomDataset([self.path+'/flickr30k_images/'+img_name for img_name in img_names_caps['img_names']],img_names_caps['img_caps'],self.transform)
 
 
 class LoadCelebA():
@@ -199,13 +200,13 @@ def IMDB_transform():
 
 if __name__=='__main__':
     batch_size=1024
-    
+    '''    
     load_coco=LoadCOCO()
     coco_train_set,coco_val_set=load_coco.get_dataset()
     '''
     load_flickr30k=LoadFlickr30K()
     flickr_set=load_flickr30k.get_dataset()
-    
+    '''
     load_celebA=LoadCelebA()
     celebA_set=load_celebA.get_dataset()
     
