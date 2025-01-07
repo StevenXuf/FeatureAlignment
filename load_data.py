@@ -2,6 +2,8 @@ import torch
 import json
 import os
 import pandas as pd
+import numpy as np
+
 from torch.utils.data import Dataset,DataLoader
 import webdataset as wds
 
@@ -55,7 +57,8 @@ class LoadCOCO():
         val_caps=[]
         
         for i in range(len(train_img_ids)):
-            train_caps.append(train_set[train_img_ids[i]][cap_idx])
+            current_id=train_img_ids[i]
+            train_caps.append(train_set[current_id][cap_idx])
         for j in range(len(val_img_ids)):
             val_caps.append(val_set[val_img_ids[j]][cap_idx])
         
@@ -151,9 +154,13 @@ class CustomDataset(Dataset):
 
     def __getitem__(self,idx):
         img_id=self.img_ids[idx]
-        image = Image.open(img_id).convert("RGB")
-        cap=self.caps[idx]
-
+        if os.path.exists(img_id):
+            image = Image.open(img_id).convert("RGB")
+            cap=self.caps[idx]
+        else:
+            image=Image.new('RGB',(224,224),color=(0,0,0))
+            cap=''
+        
         if self.transform:
             image = self.transform(image)
 

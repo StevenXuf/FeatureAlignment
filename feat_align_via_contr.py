@@ -8,6 +8,7 @@ from load_data import LoadIMDB,LoadCOCO,LoadFlickr30K
 
 from torch.utils.data import DataLoader,ConcatDataset
 from transformers import BertTokenizer
+from accelerate import Accelerator
 from torchmetrics.functional.pairwise import pairwise_cosine_similarity
 from torchmetrics.classification import MulticlassPrecision,MulticlassRecall
 
@@ -17,19 +18,17 @@ from contrastive_loss import ContrastiveLoss
 class Main():
     def __init__(self,seed,embed_dim,temp,batch_size,n_epochs,dataset,ckpt_path,vision_encoder,text_encoder,optimizer):
         # Parameters
+        self.accelerate=Accelerator()
         self.embed_dim = embed_dim
         self.temperature = temp
         self.batch_size=batch_size
         self.n_epochs=n_epochs
-        self.device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.device=self.accelerate.device
         self.seed=seed
-        self.dataset=dataset
         self.ckpt_path=ckpt_path
-        self.vision_encoder=vision_encoder.to(self.device)
-        self.text_encoder=text_encoder.to(self.device)
-        self.tokenizer=self.text_encoder.get_tokenizer()
-        self.optimizer=optimizer
-
+        self.vision_encoder,self.text_encoder,self.optimizer,self.dataset=self.accelerate.prepare(vision_encoder.to(self.device),text_encoder.to(self.device),optimizer,dataset)
+        self.tokenizer=self.text_encoder.module.get_tokenizer()
+        
     def load_ckpt(self,ckpt_path,modules,optimizer):
         if os.path.isfile(ckpt_path):
             ckpt=torch.load(ckpt_path,weights_only=True)
@@ -56,7 +55,7 @@ class Main():
         # Training
         dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=True)
         
-        start_epoch,_=self.load_ckpt(self.ckpt_path,{'vision_proj':self.vision_encoder.fc,'text_proj':self.text_encoder.fc},self.optimizer)
+        start_epoch,_=self.load_ckpt(self.ckpt_path,{'vision_proj':self.vision_encoder.module.fc,'text_proj':self.text_encoder.module.fc},self.optimizer)
 
         for epoch in range(start_epoch,self.n_epochs):
             total_loss=.0
@@ -72,19 +71,20 @@ class Main():
                 
                 # Backpropagation
                 self.optimizer.zero_grad()
-                loss.backward()
+                #loss.backward()
+                self.accelerate.backward(loss)
                 self.optimizer.step()
 
                 total_loss+=loss.item()
 
             print(f"Epoch {epoch+1}, Loss: {total_loss/(i+1):.4f}")
             print('*'*20)                
-            self.save_ckpt(epoch+1,{'vision_proj':self.vision_encoder.fc.state_dict(),'text_proj':self.text_encoder.fc.state_dict()},self.optimizer,total_loss,self.ckpt_path)
+            self.save_ckpt(epoch+1,{'vision_proj':self.vision_encoder.module.fc.state_dict(),'text_proj':self.text_encoder.module.fc.state_dict()},self.optimizer,total_loss,self.ckpt_path)
     
     def test(self,ckpt_path,dataset):
         ckpt=torch.load(ckpt_path,weights_only=True)
-        self.vision_encoder.fc.load_state_dict(ckpt['model_state_dict']['vision_proj'])
-        self.text_encoder.fc.load_state_dict(ckpt['model_state_dict']['text_proj'])
+        self.vision_encoder.module.fc.load_state_dict(ckpt['model_state_dict']['vision_proj'])
+        self.text_encoder.module.fc.load_state_dict(ckpt['model_state_dict']['text_proj'])
         
         self.vision_encoder.eval()
         self.text_encoder.eval()
@@ -120,12 +120,12 @@ if __name__=='__main__':
     dim=256
     temp=.07
     lr=1e-4
-    batch_size=32
+    batch_size=64
     n_epochs=2
-    train_set,val_set=LoadCOCO().get_dataset()
+    train_dataset,val_dataset=LoadCOCO().get_dataset()
     ckpt_dir='/data/data_fxu/ckpt_resnet34_bert/'
     os.makedirs(ckpt_dir,exist_ok=True)
-    ckpt_path=ckpt_dir+'ckpt.pth'
+    ckpt_path=ckpt_dir+'coco_ckpt.pth'
    
     torch.manual_seed(seed)
     vision_encoder = ResNet34Encoder(dim)
@@ -133,6 +133,6 @@ if __name__=='__main__':
     optimizer = optim.AdamW(
             list(vision_encoder.parameters()) + list(text_encoder.parameters()), lr=lr)
 
-    main=Main(seed,dim,temp,batch_size,n_epochs,train_set,ckpt_path,vision_encoder,text_encoder,optimizer)
+    main=Main(seed,dim,temp,batch_size,n_epochs,train_dataset,ckpt_path,vision_encoder,text_encoder,optimizer)
     main.train()
-    #main.test(ckpt_path,val_set)
+    #main.test(ckpt_path,dataset)
