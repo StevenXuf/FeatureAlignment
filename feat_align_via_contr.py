@@ -13,7 +13,7 @@ from torchmetrics.functional.pairwise import pairwise_cosine_similarity
 from torchmetrics.classification import MulticlassPrecision,MulticlassRecall
 
 from models import ResNet34Encoder,BertEncoder
-from loss_module import InfoNCE
+from loss_module import InfoNCE,CustomContrastiveLoss
 
 class Main():
     def __init__(self,seed,embed_dim,temp,batch_size,n_epochs,dataset,ckpt_path,vision_encoder,text_encoder,optimizer):
@@ -51,7 +51,8 @@ class Main():
 
     def train(self):
         # Initialize models, loss, optimizer
-        contrastive_loss = InfoNCE(self.temperature).to(self.device)
+        #contrastive_loss = InfoNCE(self.temperature).to(self.device)
+        contrastive_loss=CustomContrastiveLoss(temperature=.1).to(self.device)
 
         # Training
         dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=True)
@@ -96,7 +97,8 @@ class Main():
         recall=compute_recall(cosine,labels)
         
         return precision,recall
-
+    
+    @torch.no_grad
     def test(self,ckpt_path,dataset):
         ckpt=torch.load(ckpt_path,weights_only=True)
         self.vision_encoder.module.fc.load_state_dict(ckpt['model_state_dict']['vision_proj'])
@@ -112,7 +114,7 @@ class Main():
         
         txt2img_precision=.0
         txt2img_recall=.0
-
+        
         for i,batch in enumerate(tqdm(dataloader)):
             images,texts=batch['image'].to(self.device),batch['text']
             encoded_captions= self.tokenizer(texts, return_tensors='pt', padding=True, truncation=True).to(self.device)
@@ -128,7 +130,8 @@ class Main():
             txt2img_pre,txt2img_re=self.get_metrics(cosine.T)
             txt2img_precision+=txt2img_pre
             txt2img_recall+=txt2img_re
-        
+        #accelerate.gather()!!!
+
         print('Image-to-text')
         print(f'Precsion:{img2txt_precision/(i+1)*100:.2f}%')
         print(f'Recall:{img2txt_recall/(i+1)*100:.2f}%')
@@ -144,17 +147,17 @@ if __name__=='__main__':
     lr=1e-4
     batch_size=64
     n_epochs=100
-    train_dataset,val_dataset=LoadCOCO().get_dataset()
+    dataset=LoadIMDB().get_dataset()
     ckpt_dir='/data/data_fxu/ckpt_resnet34_bert/'
     os.makedirs(ckpt_dir,exist_ok=True)
-    ckpt_path=ckpt_dir+'coco_ckpt.pth'
+    ckpt_path=ckpt_dir+'imdb_custom_kpt.pth'
    
     torch.manual_seed(seed)
     vision_encoder = ResNet34Encoder(dim)
     text_encoder = BertEncoder(dim)
     optimizer = optim.AdamW(
             list(vision_encoder.parameters()) + list(text_encoder.parameters()), lr=lr)
-
-    main=Main(seed,dim,temp,batch_size,n_epochs,train_dataset,ckpt_path,vision_encoder,text_encoder,optimizer)
+    #lr_scheduler important for joint training since the loss plataeus!!!
+    main=Main(seed,dim,temp,batch_size,n_epochs,dataset,ckpt_path,vision_encoder,text_encoder,optimizer)
     main.train()
-    main.test(ckpt_path,val_dataset)
+    main.test(ckpt_path,dataset)
