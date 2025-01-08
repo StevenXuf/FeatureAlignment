@@ -13,7 +13,7 @@ from torchmetrics.functional.pairwise import pairwise_cosine_similarity
 from torchmetrics.classification import MulticlassPrecision,MulticlassRecall
 
 from models import ResNet34Encoder,BertEncoder
-from contrastive_loss import ContrastiveLoss
+from loss_module import InfoNCE
 
 class Main():
     def __init__(self,seed,embed_dim,temp,batch_size,n_epochs,dataset,ckpt_path,vision_encoder,text_encoder,optimizer):
@@ -51,7 +51,7 @@ class Main():
 
     def train(self):
         # Initialize models, loss, optimizer
-        contrastive_loss = ContrastiveLoss(self.temperature).to(self.device)
+        contrastive_loss = InfoNCE(self.temperature).to(self.device)
 
         # Training
         dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=True)
