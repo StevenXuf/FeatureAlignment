@@ -33,3 +33,10 @@ class BertEncoder(nn.Module):
     
     def get_tokenizer(self):
         return BertTokenizer.from_pretrained("bert-base-uncased")
+
+if __name__=='__main__':
+    resnet34=ResNet34Encoder(512)
+    bert=BertEncoder(512)
+    print(resnet34)
+    print('*'*20)
+    print(bert)

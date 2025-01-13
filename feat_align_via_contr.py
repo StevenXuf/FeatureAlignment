@@ -6,7 +6,7 @@ from tqdm import tqdm
 
 from load_data import LoadIMDB,LoadCOCO,LoadFlickr30K
 
-from torch.utils.data import DataLoader,ConcatDataset
+from torch.utils.data import DataLoader,ConcatDataset,random_split
 from transformers import BertTokenizer
 from accelerate import Accelerator
 from torchmetrics.functional.pairwise import pairwise_cosine_similarity
@@ -52,7 +52,7 @@ class Main():
     def train(self):
         # Initialize models, loss, optimizer
         #contrastive_loss = InfoNCE(self.temperature).to(self.device)
-        contrastive_loss=CustomContrastiveLoss(temperature=.1).to(self.device)
+        contrastive_loss=CustomContrastiveLoss(temperature=1).to(self.device)
 
         # Training
         dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=True)
@@ -85,7 +85,17 @@ class Main():
             print(f"Epoch {epoch+1}, Loss: {total_loss/(i+1):.4f}")
             print('*'*20)                
             self.save_ckpt(epoch+1,{'vision_proj':self.vision_encoder.module.fc.state_dict(),'text_proj':self.text_encoder.module.fc.state_dict()},self.optimizer,total_loss,self.ckpt_path)
-    
+
+class Test():
+    def __init__(self,vision_encoder,text_encoder,ckpt_path,dataset,batch_size):
+        self.device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.vision_encoder=vision_encoder.to(self.device)
+        self.text_encoder=text_encoder.to(self.device)
+        self.ckpt_path=ckpt_path
+        self.dataset=dataset
+        self.batch_size=batch_size
+        self.tokenizer=self.text_encoder.get_tokenizer()
+
     def get_metrics(self,cosine):
         n_class=cosine.size(1)
         labels=torch.arange(n_class).to(self.device)
@@ -97,17 +107,17 @@ class Main():
         recall=compute_recall(cosine,labels)
         
         return precision,recall
-    
+
     @torch.no_grad
-    def test(self,ckpt_path,dataset):
-        ckpt=torch.load(ckpt_path,weights_only=True)
-        self.vision_encoder.module.fc.load_state_dict(ckpt['model_state_dict']['vision_proj'])
-        self.text_encoder.module.fc.load_state_dict(ckpt['model_state_dict']['text_proj'])
+    def test(self):
+        ckpt=torch.load(self.ckpt_path,weights_only=True)
+        self.vision_encoder.fc.load_state_dict(ckpt['model_state_dict']['vision_proj'])
+        self.text_encoder.fc.load_state_dict(ckpt['model_state_dict']['text_proj'])
         
         self.vision_encoder.eval()
         self.text_encoder.eval()
 
-        dataloader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
+        dataloader = DataLoader(self.dataset, batch_size=self.batch_size, shuffle=True)
 
         img2txt_precision=.0
         img2txt_recall=.0
@@ -130,7 +140,6 @@ class Main():
             txt2img_pre,txt2img_re=self.get_metrics(cosine.T)
             txt2img_precision+=txt2img_pre
             txt2img_recall+=txt2img_re
-        #accelerate.gather()!!!
 
         print('Image-to-text')
         print(f'Precsion:{img2txt_precision/(i+1)*100:.2f}%')
@@ -148,6 +157,7 @@ if __name__=='__main__':
     batch_size=64
     n_epochs=100
     dataset=LoadIMDB().get_dataset()
+    train_set,test_set=random_split(dataset,[.8,.2],generator=torch.Generator().manual_seed(seed))
     ckpt_dir='/data/data_fxu/ckpt_resnet34_bert/'
     os.makedirs(ckpt_dir,exist_ok=True)
     ckpt_path=ckpt_dir+'imdb_custom_kpt.pth'
@@ -158,6 +168,6 @@ if __name__=='__main__':
     optimizer = optim.AdamW(
             list(vision_encoder.parameters()) + list(text_encoder.parameters()), lr=lr)
     #lr_scheduler important for joint training since the loss plataeus!!!
-    main=Main(seed,dim,temp,batch_size,n_epochs,dataset,ckpt_path,vision_encoder,text_encoder,optimizer)
-    main.train()
-    main.test(ckpt_path,dataset)
+    #main=Main(seed,dim,temp,batch_size,n_epochs,train_set,ckpt_path,vision_encoder,text_encoder,optimizer)
+    #main.train()
+    Test(vision_encoder,text_encoder,ckpt_path,test_set,batch_size).test()
